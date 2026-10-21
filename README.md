@@ -72,8 +72,7 @@ Any platform that runs a Dockerfile (Railway, Fly.io, Google Cloud Run, AWS App 
 Set `SPRING_PROFILES_ACTIVE=prod`, `DB_HOST`, `DB_NAME`, `DB_USER`, `DB_PASSWORD`, `APP_JWT_SECRET`
 (and `DB_PORT` if not 5432).
 
-## Ideas to extend it (good interview talking points)
-
+## Ideas to extend it 
 - Replace `ddl-auto: update` with **Flyway** migrations.
 - Add **SMS/WhatsApp/email "you're next"** notifications via a notifier interface.
 - Add **rate limiting** on the public join endpoint (e.g. Bucket4j) to stop queue spam.
