@@ -1,0 +1,114 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Your ticket — QueueLess</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+  <div class="wrap narrow">
+    <div class="topbar"><a class="brand" href="/" style="color:inherit"><span class="dot"></span>QueueLess</a></div>
+
+    <div class="card center" id="card">
+      <div class="muted" id="shopName">…</div>
+      <div class="ticket-no" id="number">–</div>
+      <div id="who" class="muted"></div>
+      <p><span class="pill" id="statusPill">…</span></p>
+      <h2 id="headline"></h2>
+      <p class="muted" id="sub"></p>
+    </div>
+
+    <div class="stats" id="stats">
+      <div class="stat"><div class="k">People ahead</div><div class="v" id="ahead">—</div></div>
+      <div class="stat"><div class="k">Estimated wait</div><div class="v" id="eta">—</div></div>
+      <div class="stat"><div class="k">Now serving</div><div class="v" id="serving">—</div></div>
+    </div>
+
+    <div class="row" id="actions">
+      <button class="danger" id="cancelBtn">Leave the queue</button>
+    </div>
+    <p class="muted small">Keep this page open or bookmark it — it updates by itself. Estimates improve as the shop serves more people.</p>
+    <p class="err" id="err"></p>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/@stomp/stompjs@7.0.0/bundles/stomp.umd.min.js"></script>
+  <script src="/js/common.js"></script>
+  <script>
+    const token = new URLSearchParams(location.search).get('t');
+    let subscribed = false;
+    let lastStatus = null;
+
+    function render(t) {
+      $('#shopName').textContent = t.shopName;
+      $('#number').textContent = '#' + t.number;
+      $('#who').textContent = t.customerName;
+      $('#serving').textContent = t.nowServing == null ? '—' : '#' + t.nowServing;
+
+      const pill = $('#statusPill');
+      const card = $('#card');
+      card.classList.remove('turn');
+      pill.className = 'pill';
+
+      const waiting = t.status === 'WAITING';
+      $('#stats').classList.toggle('hidden', !waiting);
+      $('#actions').classList.toggle('hidden', !waiting);
+
+      switch (t.status) {
+        case 'WAITING':
+          pill.textContent = 'Waiting';
+          $('#headline').textContent = t.position === 1 ? "You're next!" : (t.position - 1) + ' ahead of you';
+          $('#sub').textContent = 'Estimated wait: ' + fmtEta(t.etaSeconds);
+          $('#ahead').textContent = t.position - 1;
+          $('#eta').textContent = fmtEta(t.etaSeconds);
+          document.title = '#' + t.number + ' · ' + (t.position - 1) + ' ahead';
+          break;
+        case 'SERVING':
+          pill.textContent = 'Your turn';
+          card.classList.add('turn');
+          $('#headline').textContent = "It's your turn!";
+          $('#sub').textContent = 'Please head to the counter now.';
+          document.title = "🔔 Your turn! — QueueLess";
+          if (lastStatus === 'WAITING' && navigator.vibrate) navigator.vibrate([300, 150, 300, 150, 600]);
+          break;
+        case 'DONE':
+          pill.textContent = 'Done';
+          $('#headline').textContent = 'All done — thanks!';
+          $('#sub').textContent = '';
+          break;
+        case 'SKIPPED':
+          pill.textContent = 'Missed';
+          pill.classList.add('amber');
+          $('#headline').textContent = 'You were skipped';
+          $('#sub').textContent = 'Looks like you missed your call. Join the queue again if you still need service.';
+          break;
+        case 'CANCELLED':
+          pill.textContent = 'Cancelled';
+          pill.classList.add('red');
+          $('#headline').textContent = 'You left the queue';
+          $('#sub').textContent = '';
+          break;
+      }
+      lastStatus = t.status;
+
+      if (!subscribed) { subscribed = true; subscribe(t.shopSlug, refresh); }
+    }
+
+    async function refresh() {
+      try { render(await api('/api/public/tickets/' + encodeURIComponent(token))); }
+      catch (e) { $('#err').textContent = e.message; }
+    }
+
+    $('#cancelBtn').addEventListener('click', async () => {
+      if (!confirm('Leave the queue? You will lose your place.')) return;
+      try { render(await api('/api/public/tickets/' + encodeURIComponent(token), { method: 'DELETE' })); }
+      catch (e) { $('#err').textContent = e.message; }
+    });
+
+    refresh();
+    setInterval(refresh, 15000);
+  </script>
+</body>
+</html>

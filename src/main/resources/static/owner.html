@@ -1,0 +1,241 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Owner dashboard — QueueLess</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+  <div class="wrap">
+    <div class="topbar">
+      <a class="brand" href="/" style="color:inherit"><span class="dot"></span>QueueLess</a>
+      <button class="ghost hidden" id="logout">Log out</button>
+    </div>
+
+    <!-- auth -->
+    <section id="authView" class="hidden narrow" style="max-width:460px">
+      <h1 id="authTitle">Welcome back</h1>
+      <form id="authForm" class="card">
+        <div id="nameRow" class="hidden">
+          <label for="aname">Your / business name</label>
+          <input id="aname" maxlength="60">
+        </div>
+        <label for="email">Email</label>
+        <input id="email" type="email" autocomplete="email" required>
+        <label for="password">Password (8+ characters)</label>
+        <input id="password" type="password" autocomplete="current-password" minlength="8" required>
+        <button class="full" type="submit" id="authBtn">Log in</button>
+        <p class="err" id="authErr"></p>
+      </form>
+      <p class="muted"><a href="#" id="switchMode">New here? Create an account</a></p>
+    </section>
+
+    <!-- dashboard -->
+    <section id="dashView" class="hidden">
+      <div class="shops" id="shopTabs"></div>
+
+      <form id="newShop" class="card">
+        <h2>Create a queue</h2>
+        <div class="row">
+          <input id="shopNameInput" class="grow" placeholder="Business name" maxlength="60" required>
+          <input id="avgMin" type="number" min="1" max="120" value="5" style="width:120px" aria-label="Average minutes per customer" required>
+          <button type="submit">Create</button>
+        </div>
+        <p class="muted small">The number is your starting guess for minutes per customer. QueueLess adapts it automatically.</p>
+        <p class="err" id="shopErr"></p>
+      </form>
+
+      <div id="panel" class="hidden">
+        <div class="stats">
+          <div class="stat"><div class="k">Waiting</div><div class="v" id="sWaiting">0</div></div>
+          <div class="stat"><div class="k">Served</div><div class="v" id="sServed">0</div></div>
+          <div class="stat"><div class="k">Avg / customer</div><div class="v" id="sAvg">—</div></div>
+        </div>
+
+        <div class="card" id="servingCard">
+          <div class="muted small">NOW SERVING</div>
+          <div class="row" style="justify-content:space-between;align-items:flex-end">
+            <div>
+              <div style="font-size:3rem;font-weight:700;letter-spacing:-.04em;line-height:1" id="servNo">—</div>
+              <div id="servName" class="muted"></div>
+            </div>
+            <div class="muted" id="servTimer"></div>
+          </div>
+          <div class="row" style="margin-top:18px">
+            <button id="nextBtn">Call next</button>
+            <button class="ghost" id="skipBtn">No-show · skip</button>
+            <button class="ghost" id="toggleBtn">Close queue</button>
+          </div>
+          <p class="err" id="opErr"></p>
+        </div>
+
+        <div class="card">
+          <h2>Waiting <span class="muted small" id="emptyNote"></span></h2>
+          <ul class="list" id="waitList"></ul>
+        </div>
+
+        <div class="card row" style="gap:20px">
+          <div class="qr"><img id="qrImg" alt="QR code to join this queue" width="140" height="140"></div>
+          <div class="grow">
+            <h2>Share this queue</h2>
+            <p class="muted">Print the QR code or send the link. Customers need no account.</p>
+            <input id="joinLink" readonly>
+            <div class="row" style="margin-top:10px">
+              <button class="ghost" id="copyBtn">Copy link</button>
+              <a class="btn ghost" id="openLink" target="_blank" rel="noopener" style="background:transparent;color:var(--text);border:1px solid var(--line)">Open customer view</a>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/@stomp/stompjs@7.0.0/bundles/stomp.umd.min.js"></script>
+  <script src="/js/common.js"></script>
+  <script>
+    let mode = 'login';
+    let shops = [];
+    let current = null;       // selected shop id
+    let snap = null;          // last owner snapshot
+    let snapAt = 0;           // when snap arrived, to tick the timer locally
+    const subscribed = new Set();
+
+    function onSessionExpired() { showAuth(); }
+
+    // ---------- auth
+    function showAuth() {
+      $('#authView').classList.remove('hidden');
+      $('#dashView').classList.add('hidden');
+      $('#logout').classList.add('hidden');
+    }
+    function setMode(m) {
+      mode = m;
+      const reg = m === 'register';
+      $('#authTitle').textContent = reg ? 'Create your account' : 'Welcome back';
+      $('#authBtn').textContent = reg ? 'Sign up' : 'Log in';
+      $('#nameRow').classList.toggle('hidden', !reg);
+      $('#aname').required = reg;
+      $('#switchMode').textContent = reg ? 'Have an account? Log in' : 'New here? Create an account';
+      $('#password').autocomplete = reg ? 'new-password' : 'current-password';
+    }
+    $('#switchMode').addEventListener('click', e => { e.preventDefault(); setMode(mode === 'login' ? 'register' : 'login'); });
+
+    $('#authForm').addEventListener('submit', async e => {
+      e.preventDefault();
+      $('#authErr').textContent = '';
+      const body = { email: $('#email').value, password: $('#password').value };
+      if (mode === 'register') body.name = $('#aname').value;
+      try {
+        const res = await api('/api/auth/' + mode, { method: 'POST', body });
+        Auth.token = res.token;
+        start();
+      } catch (err) { $('#authErr').textContent = err.message; }
+    });
+
+    $('#logout').addEventListener('click', () => { Auth.token = null; location.reload(); });
+
+    // ---------- dashboard
+    async function start() {
+      $('#authView').classList.add('hidden');
+      $('#dashView').classList.remove('hidden');
+      $('#logout').classList.remove('hidden');
+      await loadShops();
+    }
+
+    async function loadShops() {
+      shops = await api('/api/owner/shops', { auth: true });
+      if (!shops.length) current = null;
+      else if (!shops.some(s => s.id === current)) current = shops[0].id;
+      renderTabs();
+      await loadQueue();
+    }
+
+    function renderTabs() {
+      const box = $('#shopTabs');
+      box.replaceChildren(...shops.map(s =>
+        h('button', { class: s.id === current ? 'active' : '', onclick: () => { current = s.id; renderTabs(); loadQueue(); } },
+          s.name, s.waiting ? ' · ' + s.waiting : '')));
+    }
+
+    async function loadQueue() {
+      if (current == null) { $('#panel').classList.add('hidden'); return; }
+      try { setSnap(await api('/api/owner/shops/' + current + '/queue', { auth: true })); }
+      catch (e) { $('#opErr').textContent = e.message; }
+    }
+
+    function setSnap(s) {
+      snap = s; snapAt = Date.now();
+      $('#panel').classList.remove('hidden');
+      $('#sWaiting').textContent = s.waiting.length;
+      $('#sServed').textContent = s.servedCount;
+      $('#sAvg').textContent = fmtEta(s.avgServiceSeconds).replace('under a minute', '<1 min');
+      $('#servNo').textContent = s.serving ? '#' + s.serving.number : '—';
+      $('#servName').textContent = s.serving ? s.serving.name : 'Nobody yet';
+      $('#toggleBtn').textContent = s.shop.open ? 'Close queue' : 'Reopen queue';
+      $('#skipBtn').disabled = !s.serving;
+      $('#nextBtn').textContent = s.serving ? (s.waiting.length ? 'Done · call next' : 'Done') : 'Call next';
+      $('#nextBtn').disabled = !s.serving && !s.waiting.length;
+      $('#emptyNote').textContent = s.waiting.length ? '' : '· nobody waiting';
+      $('#waitList').replaceChildren(...s.waiting.map(w =>
+        h('li', {}, h('span', {}, h('span', { class: 'no' }, '#' + w.number), ' ', w.name),
+          h('span', { class: 'muted' }, 'waiting ' + fmtClock(w.waitedSeconds)))));
+
+      const link = location.origin + '/join.html?s=' + s.shop.slug;
+      $('#joinLink').value = link;
+      $('#openLink').href = link;
+      $('#qrImg').src = 'https://api.qrserver.com/v1/create-qr-code/?size=280x280&margin=0&data=' + encodeURIComponent(link);
+
+      if (!subscribed.has(s.shop.slug)) {
+        subscribed.add(s.shop.slug);
+        subscribe(s.shop.slug, () => { loadQueue(); });
+      }
+    }
+
+    async function act(path) {
+      $('#opErr').textContent = '';
+      try { setSnap(await api('/api/owner/shops/' + current + '/' + path, { method: 'POST', auth: true })); renderTabsCounts(); }
+      catch (e) { $('#opErr').textContent = e.message; }
+    }
+    function renderTabsCounts() {
+      if (!snap) return;
+      const s = shops.find(x => x.id === current);
+      if (s) { s.waiting = snap.waiting.length; renderTabs(); }
+    }
+    $('#nextBtn').addEventListener('click', () => act('next'));
+    $('#skipBtn').addEventListener('click', () => act('skip'));
+    $('#toggleBtn').addEventListener('click', () => act('toggle-open'));
+
+    $('#copyBtn').addEventListener('click', async () => {
+      try { await navigator.clipboard.writeText($('#joinLink').value); $('#copyBtn').textContent = 'Copied!'; }
+      catch { $('#joinLink').select(); }
+      setTimeout(() => { $('#copyBtn').textContent = 'Copy link'; }, 1500);
+    });
+
+    $('#newShop').addEventListener('submit', async e => {
+      e.preventDefault();
+      $('#shopErr').textContent = '';
+      try {
+        const s = await api('/api/owner/shops', { method: 'POST', auth: true,
+          body: { name: $('#shopNameInput').value, avgServiceMinutes: Number($('#avgMin').value) } });
+        $('#shopNameInput').value = '';
+        current = s.id;
+        await loadShops();
+      } catch (err) { $('#shopErr').textContent = err.message; }
+    });
+
+    // live "time with current customer" timer + periodic refresh as a WebSocket fallback
+    setInterval(() => {
+      if (snap && snap.serving) {
+        const secs = snap.serving.elapsedSeconds + (Date.now() - snapAt) / 1000;
+        $('#servTimer').textContent = 'with this customer ' + fmtClock(secs);
+      } else { $('#servTimer').textContent = ''; }
+    }, 1000);
+    setInterval(() => { if (Auth.token && current != null) loadQueue(); }, 15000);
+
+    if (Auth.token) start().catch(showAuth); else showAuth();
+  </script>
+</body>
+</html>

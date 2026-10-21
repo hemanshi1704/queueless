@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>QueueLess — skip the line, not the service</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+  <div class="wrap">
+    <div class="topbar">
+      <div class="brand"><span class="dot"></span>QueueLess</div>
+      <a href="/owner.html">I run a business →</a>
+    </div>
+
+    <h1>Skip the line,<br>not the service.</h1>
+    <p class="lead">Join a queue from your phone, watch your turn get closer in real time, and show up exactly when it's your turn. Wait times that learn how fast each shop actually works.</p>
+
+    <form id="codeForm" class="card" style="margin-top:32px">
+      <label for="code">Have a queue code or link?</label>
+      <div class="row">
+        <input id="code" class="grow" placeholder="e.g. chai-corner-x7k2" autocomplete="off" required>
+        <button type="submit">Join queue</button>
+      </div>
+      <p class="err" id="err"></p>
+    </form>
+
+    <div class="stats">
+      <div class="stat"><div class="k">Live updates</div><div class="v">WebSocket</div></div>
+      <div class="stat"><div class="k">ETA model</div><div class="v">Adaptive</div></div>
+      <div class="stat"><div class="k">Customer signup</div><div class="v">None</div></div>
+    </div>
+  </div>
+
+  <script src="/js/common.js"></script>
+  <script>
+    $('#codeForm').addEventListener('submit', async e => {
+      e.preventDefault();
+      let code = $('#code').value.trim();
+      // accept a pasted join link too
+      const m = code.match(/[?&]s=([a-z0-9-]+)/i);
+      if (m) code = m[1];
+      try {
+        await api('/api/public/shops/' + encodeURIComponent(code));
+        location.href = '/join.html?s=' + encodeURIComponent(code);
+      } catch (err) {
+        $('#err').textContent = 'No queue found with that code.';
+      }
+    });
+  </script>
+</body>
+</html>

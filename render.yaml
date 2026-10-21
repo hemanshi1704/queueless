@@ -1,0 +1,26 @@
+# Render Blueprint: one-click deploy of the app + a managed PostgreSQL database.
+services:
+  - type: web
+    name: queueless
+    runtime: docker
+    plan: free
+    healthCheckPath: /actuator/health
+    envVars:
+      - key: SPRING_PROFILES_ACTIVE
+        value: prod
+      - key: APP_JWT_SECRET
+        generateValue: true
+      - key: DB_HOST
+        fromDatabase: { name: queueless-db, property: host }
+      - key: DB_PORT
+        fromDatabase: { name: queueless-db, property: port }
+      - key: DB_NAME
+        fromDatabase: { name: queueless-db, property: database }
+      - key: DB_USER
+        fromDatabase: { name: queueless-db, property: user }
+      - key: DB_PASSWORD
+        fromDatabase: { name: queueless-db, property: password }
+
+databases:
+  - name: queueless-db
+    plan: free

@@ -1,0 +1,80 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Join the queue — QueueLess</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+  <div class="wrap narrow">
+    <div class="topbar"><a class="brand" href="/" style="color:inherit"><span class="dot"></span>QueueLess</a></div>
+
+    <h1 id="shopName">…</h1>
+    <p><span class="pill" id="openPill"></span></p>
+
+    <div class="stats">
+      <div class="stat"><div class="k">Now serving</div><div class="v" id="serving">—</div></div>
+      <div class="stat"><div class="k">Waiting</div><div class="v" id="waiting">—</div></div>
+      <div class="stat"><div class="k">Wait if you join</div><div class="v" id="eta">—</div></div>
+    </div>
+
+    <div id="existing" class="card hidden">
+      <p>You already have a ticket in this queue.</p>
+      <a class="btn" id="existingLink" href="#">View my ticket</a>
+    </div>
+
+    <form id="joinForm" class="card">
+      <label for="name">Your name</label>
+      <input id="name" maxlength="40" autocomplete="given-name" placeholder="So they can call you" required>
+      <button class="full" type="submit" id="joinBtn">Get my ticket</button>
+      <p class="err" id="err"></p>
+    </form>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/@stomp/stompjs@7.0.0/bundles/stomp.umd.min.js"></script>
+  <script src="/js/common.js"></script>
+  <script>
+    const slug = new URLSearchParams(location.search).get('s');
+    const storeKey = 'ql_ticket_' + slug;
+
+    function render(s) {
+      $('#shopName').textContent = s.shopName;
+      const pill = $('#openPill');
+      pill.textContent = s.open ? 'Open' : 'Closed';
+      pill.className = 'pill ' + (s.open ? '' : 'red');
+      $('#serving').textContent = s.nowServing == null ? '—' : '#' + s.nowServing;
+      $('#waiting').textContent = s.waiting;
+      $('#eta').textContent = fmtEta(s.estimatedWaitSeconds);
+      $('#joinBtn').disabled = !s.open;
+    }
+
+    async function refresh() {
+      try { render(await api('/api/public/shops/' + encodeURIComponent(slug))); }
+      catch { $('#shopName').textContent = 'Queue not found'; $('#joinForm').classList.add('hidden'); }
+    }
+
+    try {
+      const saved = localStorage.getItem(storeKey);
+      if (saved) { $('#existing').classList.remove('hidden'); $('#existingLink').href = '/ticket.html?t=' + saved; }
+    } catch { /* ignore */ }
+
+    $('#joinForm').addEventListener('submit', async e => {
+      e.preventDefault();
+      $('#err').textContent = '';
+      try {
+        const t = await api('/api/public/shops/' + encodeURIComponent(slug) + '/join',
+          { method: 'POST', body: { name: $('#name').value } });
+        try { localStorage.setItem(storeKey, t.token); } catch { /* ignore */ }
+        location.href = '/ticket.html?t=' + t.token;
+      } catch (err) { $('#err').textContent = err.message; }
+    });
+
+    refresh();
+    subscribe(slug, render);
+    setInterval(refresh, 15000);
+  </script>
+</body>
+</html>

@@ -1,0 +1,28 @@
+server:
+  port: ${PORT:8080}
+  shutdown: graceful
+
+spring:
+  application:
+    name: queueless
+  # Override with SPRING_DATASOURCE_URL / _USERNAME / _PASSWORD in production (PostgreSQL).
+  datasource:
+    url: jdbc:h2:mem:queueless;DB_CLOSE_DELAY=-1
+    username: sa
+    password: ""
+  jpa:
+    hibernate:
+      ddl-auto: update
+    open-in-view: false
+
+app:
+  jwt:
+    # Override with APP_JWT_SECRET in production (32+ characters).
+    secret: dev-only-secret-change-me-please-32-bytes-minimum!!
+    ttl-hours: 12
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health
